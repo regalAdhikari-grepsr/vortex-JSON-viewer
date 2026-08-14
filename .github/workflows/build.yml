@@ -2,13 +2,15 @@ name: Build Tauri App
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
+    tags:
+      - "v*"
 
 jobs:
   build-linux:
     runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -40,3 +42,8 @@ jobs:
 
       - name: Build Tauri app
         run: cargo tauri build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/bundle/appimage/*.AppImage
