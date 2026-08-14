@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JSON Explorer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="openBtn" class="btn btn-primary">Open File…</button>
+
+      <div id="searchWrap">
+        <input id="searchInput" type="text" placeholder="Search values… (substring match)" disabled />
+        <label class="case-toggle">
+          <input id="caseSensitive" type="checkbox" />
+          Aa
+        </label>
+        <span id="searchStatus"></span>
+        <button id="prevMatch" class="btn btn-ghost" disabled>↑</button>
+        <button id="nextMatch" class="btn btn-ghost" disabled>↓</button>
+      </div>
+
+      <div id="dupKeysWrap">
+        <button id="dupKeysBtn" class="btn" disabled>Keys: whole row ▾</button>
+        <div id="dupKeysPanel" class="dup-keys-panel hidden">
+          <div id="dupKeysList" class="dup-keys-list">
+            <div class="hint" style="padding:8px;">Open a file first.</div>
+          </div>
+          <div class="dup-keys-manual">
+            <input id="dupKeysManual" type="text" placeholder="add a key not listed above, e.g. items.0.sku" />
+          </div>
+          <div class="dup-keys-actions">
+            <button id="dupKeysClear" class="btn btn-ghost">Clear</button>
+            <button id="dupKeysDone" class="btn btn-primary">Done</button>
+          </div>
+        </div>
+      </div>
+      <button id="dupBtn" class="btn" disabled>Find Duplicates</button>
+
+      <div id="fileStats"></div>
+    </header>
+
+    <main id="content">
+      <section id="listPane">
+        <div id="listViewport">
+          <div id="listSizer"></div>
+        </div>
+        <div id="emptyState">
+          <p>Open a .json or .jsonl file to get started.</p>
+        </div>
+      </section>
+
+      <section id="detailPane">
+        <div id="detailHeader">
+          <span id="detailIndex">No row selected</span>
+        </div>
+        <div id="detailBody"><div class="hint">Select a row to inspect it here.</div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="dupModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Duplicate Rows</h2>
+        <button id="dupClose" class="btn btn-ghost">✕</button>
+      </div>
+      <div id="dupList" class="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>
