@@ -128,7 +128,6 @@ jobs:
           name: macos-release
           path: src-tauri/target/release/bundle/dmg/*.dmg
 
-
   # ─────────────────────────────────────────────
   # GitHub Release
   # ─────────────────────────────────────────────
