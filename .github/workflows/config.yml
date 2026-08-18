@@ -20,22 +20,34 @@ jobs:
       matrix:
         include:
 
+          # ─────────────────────────────────────
           # Linux x64
+          # ─────────────────────────────────────
+
           - name: Linux
             platform: ubuntu-22.04
             args: ""
 
+          # ─────────────────────────────────────
           # Windows x64
+          # ─────────────────────────────────────
+
           - name: Windows
             platform: windows-latest
             args: ""
 
+          # ─────────────────────────────────────
           # macOS Apple Silicon
+          # ─────────────────────────────────────
+
           - name: macOS ARM64
             platform: macos-latest
             args: "--target aarch64-apple-darwin"
 
+          # ─────────────────────────────────────
           # macOS Intel
+          # ─────────────────────────────────────
+
           - name: macOS Intel
             platform: macos-latest
             args: "--target x86_64-apple-darwin"
@@ -43,6 +55,7 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
+
       # ─────────────────────────────────────────
       # Checkout
       # ─────────────────────────────────────────
@@ -77,12 +90,15 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
+
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            xdg-utils
+            xdg-utils \
+            squashfs-tools \
+            libfuse2
 
       # ─────────────────────────────────────────
       # Frontend dependencies
@@ -92,18 +108,166 @@ jobs:
         run: npm ci
 
       # ─────────────────────────────────────────
-      # Build Tauri app
+      # Build Linux
+      #
+      # We intentionally build Linux directly instead
+      # of using tauri-action because we need to modify
+      # the generated AppImage before uploading it.
       # ─────────────────────────────────────────
 
-      - name: Build Tauri app
+      - name: Build Linux Tauri app
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          npx tauri build
+
+      # ─────────────────────────────────────────
+      # Fix Linux AppImage
+      #
+      # Tauri's AppImage currently bundles its own
+      # libwayland-client.so.0.
+      #
+      # On newer Wayland/Mesa systems this can cause:
+      #
+      #   Could not create default EGL display:
+      #   EGL_BAD_PARAMETER. Aborting...
+      #
+      # We verified that forcing the host's
+      # libwayland-client fixes the problem.
+      # ─────────────────────────────────────────
+
+      - name: Fix Linux AppImage
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          APPIMAGE_DIR="src-tauri/target/release/bundle/appimage"
+
+          APPIMAGE=$(find "$APPIMAGE_DIR" \
+            -maxdepth 1 \
+            -type f \
+            -name "*.AppImage" \
+            -print -quit)
+
+          if [ -z "$APPIMAGE" ]; then
+            echo "ERROR: AppImage not found"
+            exit 1
+          fi
+
+          echo "Found AppImage:"
+          echo "$APPIMAGE"
+
+          # ─────────────────────────────────────
+          # Extract AppImage
+          # ─────────────────────────────────────
+
+          rm -rf AppDir
+
+          "$APPIMAGE" --appimage-extract
+
+          mv squashfs-root AppDir
+
+          # ─────────────────────────────────────
+          # Show bundled Wayland libraries
+          # ─────────────────────────────────────
+
+          echo ""
+          echo "===== Bundled Wayland libraries ====="
+
+          find AppDir/usr/lib \
+            -maxdepth 1 \
+            -type f \
+            -name "libwayland-*" \
+            -print || true
+
+          # ─────────────────────────────────────
+          # Remove problematic bundled library
+          # ─────────────────────────────────────
+
+          echo ""
+          echo "Removing bundled libwayland-client.so.0..."
+
+          rm -f AppDir/usr/lib/libwayland-client.so.0
+
+          # ─────────────────────────────────────
+          # Verify it was removed
+          # ─────────────────────────────────────
+
+          if [ -e AppDir/usr/lib/libwayland-client.so.0 ]; then
+            echo "ERROR: libwayland-client.so.0 still exists"
+            exit 1
+          fi
+
+          echo "libwayland-client.so.0 successfully removed."
+
+          # ─────────────────────────────────────
+          # Download appimagetool
+          # ─────────────────────────────────────
+
+          wget -q \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+            -O appimagetool
+
+          chmod +x appimagetool
+
+          # ─────────────────────────────────────
+          # Rebuild AppImage
+          # ─────────────────────────────────────
+
+          rm -f "$APPIMAGE"
+
+          ARCH=x86_64 \
+            ./appimagetool \
+            AppDir \
+            "$APPIMAGE"
+
+          chmod +x "$APPIMAGE"
+
+          # ─────────────────────────────────────
+          # Verify final AppImage
+          # ─────────────────────────────────────
+
+          echo ""
+          echo "===== Final AppImage ====="
+
+          ls -lh "$APPIMAGE"
+
+          echo ""
+          echo "===== Final bundled Wayland libraries ====="
+
+          "$APPIMAGE" --appimage-extract >/dev/null
+
+          find squashfs-root/usr/lib \
+            -maxdepth 1 \
+            -type f \
+            -name "libwayland-*" \
+            -print || true
+
+          rm -rf squashfs-root
+
+      # ─────────────────────────────────────────
+      # Upload fixed Linux AppImage
+      # ─────────────────────────────────────────
+
+      - name: Upload Linux AppImage
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Linux-AppImage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+      # ─────────────────────────────────────────
+      # Build Windows / macOS
+      # ─────────────────────────────────────────
+
+      - name: Build Windows / macOS Tauri app
+        if: matrix.platform != 'ubuntu-22.04'
         uses: tauri-apps/tauri-action@v1
         with:
           tauriScript: npx tauri
           args: ${{ matrix.args }}
 
-          # Upload generated bundles as workflow artifacts.
-          # We intentionally do NOT give tauri-action tagName/releaseName,
-          # so it does not try to create/upload a GitHub Release itself.
           uploadWorkflowArtifacts: true
 
           workflowArtifactNamePattern: "${{ matrix.name }}-[bundle]"
@@ -120,16 +284,29 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+
+      # ─────────────────────────────────────────
+      # Download all artifacts
+      # ─────────────────────────────────────────
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release
           merge-multiple: true
 
+      # ─────────────────────────────────────────
+      # Show release files
+      # ─────────────────────────────────────────
+
       - name: Show release files
         run: |
           echo "===== Release files ====="
           find release -type f -print
+
+      # ─────────────────────────────────────────
+      # Create GitHub Release
+      # ─────────────────────────────────────────
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -137,6 +314,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: Vortex JSON Viewer ${{ github.ref_name }}
           generate_release_notes: true
+
           files: |
             release/**/*.AppImage
             release/**/*.msi
