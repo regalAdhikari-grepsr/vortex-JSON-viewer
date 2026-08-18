@@ -26,7 +26,8 @@ jobs:
 
           - name: Linux
             platform: ubuntu-22.04
-            args: ""
+            target: ""
+            bundle: appimage
 
           # ─────────────────────────────────────
           # Windows x64
@@ -34,23 +35,26 @@ jobs:
 
           - name: Windows
             platform: windows-latest
-            args: ""
+            target: ""
+            bundle: msi,nsis
 
           # ─────────────────────────────────────
           # macOS Apple Silicon
           # ─────────────────────────────────────
 
-          - name: macOS ARM64
+          - name: macOS-ARM64
             platform: macos-latest
-            args: "--target aarch64-apple-darwin"
+            target: aarch64-apple-darwin
+            bundle: dmg
 
           # ─────────────────────────────────────
           # macOS Intel
           # ─────────────────────────────────────
 
-          - name: macOS Intel
+          - name: macOS-Intel
             platform: macos-latest
-            args: "--target x86_64-apple-darwin"
+            target: x86_64-apple-darwin
+            bundle: dmg
 
     runs-on: ${{ matrix.platform }}
 
@@ -80,7 +84,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       # ─────────────────────────────────────────
       # Linux dependencies
@@ -109,30 +113,15 @@ jobs:
 
       # ─────────────────────────────────────────
       # Build Linux
-      #
-      # We intentionally build Linux directly instead
-      # of using tauri-action because we need to modify
-      # the generated AppImage before uploading it.
       # ─────────────────────────────────────────
 
-      - name: Build Linux Tauri app
+      - name: Build Linux AppImage
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          npx tauri build
+          npx tauri build --bundles appimage
 
       # ─────────────────────────────────────────
       # Fix Linux AppImage
-      #
-      # Tauri's AppImage currently bundles its own
-      # libwayland-client.so.0.
-      #
-      # On newer Wayland/Mesa systems this can cause:
-      #
-      #   Could not create default EGL display:
-      #   EGL_BAD_PARAMETER. Aborting...
-      #
-      # We verified that forcing the host's
-      # libwayland-client fixes the problem.
       # ─────────────────────────────────────────
 
       - name: Fix Linux AppImage
@@ -157,19 +146,11 @@ jobs:
           echo "Found AppImage:"
           echo "$APPIMAGE"
 
-          # ─────────────────────────────────────
-          # Extract AppImage
-          # ─────────────────────────────────────
-
-          rm -rf AppDir
+          rm -rf AppDir squashfs-root
 
           "$APPIMAGE" --appimage-extract
 
           mv squashfs-root AppDir
-
-          # ─────────────────────────────────────
-          # Show bundled Wayland libraries
-          # ─────────────────────────────────────
 
           echo ""
           echo "===== Bundled Wayland libraries ====="
@@ -180,18 +161,10 @@ jobs:
             -name "libwayland-*" \
             -print || true
 
-          # ─────────────────────────────────────
-          # Remove problematic bundled library
-          # ─────────────────────────────────────
-
           echo ""
           echo "Removing bundled libwayland-client.so.0..."
 
           rm -f AppDir/usr/lib/libwayland-client.so.0
-
-          # ─────────────────────────────────────
-          # Verify it was removed
-          # ─────────────────────────────────────
 
           if [ -e AppDir/usr/lib/libwayland-client.so.0 ]; then
             echo "ERROR: libwayland-client.so.0 still exists"
@@ -200,19 +173,11 @@ jobs:
 
           echo "libwayland-client.so.0 successfully removed."
 
-          # ─────────────────────────────────────
-          # Download appimagetool
-          # ─────────────────────────────────────
-
           wget -q \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
             -O appimagetool
 
           chmod +x appimagetool
-
-          # ─────────────────────────────────────
-          # Rebuild AppImage
-          # ─────────────────────────────────────
 
           rm -f "$APPIMAGE"
 
@@ -223,54 +188,87 @@ jobs:
 
           chmod +x "$APPIMAGE"
 
-          # ─────────────────────────────────────
-          # Verify final AppImage
-          # ─────────────────────────────────────
-
           echo ""
           echo "===== Final AppImage ====="
 
           ls -lh "$APPIMAGE"
 
-          echo ""
-          echo "===== Final bundled Wayland libraries ====="
-
-          "$APPIMAGE" --appimage-extract >/dev/null
-
-          find squashfs-root/usr/lib \
-            -maxdepth 1 \
-            -type f \
-            -name "libwayland-*" \
-            -print || true
-
           rm -rf squashfs-root
 
       # ─────────────────────────────────────────
-      # Upload fixed Linux AppImage
+      # Build Windows
       # ─────────────────────────────────────────
 
-      - name: Upload Linux AppImage
+      - name: Build Windows
+        if: matrix.platform == 'windows-latest'
+        run: |
+          npx tauri build --bundles msi,nsis
+
+      # ─────────────────────────────────────────
+      # Build macOS
+      # ─────────────────────────────────────────
+
+      - name: Build macOS
+        if: matrix.platform == 'macos-latest'
+        run: |
+          npx tauri build \
+            --target ${{ matrix.target }} \
+            --bundles dmg
+
+      # ─────────────────────────────────────────
+      # Show build files
+      # ─────────────────────────────────────────
+
+      - name: Show build output
+        shell: bash
+        run: |
+          echo "===== BUILD OUTPUT ====="
+          find src-tauri/target -type f \
+            \( -name "*.AppImage" \
+            -o -name "*.msi" \
+            -o -name "*.exe" \
+            -o -name "*.dmg" \) \
+            -print
+
+      # ─────────────────────────────────────────
+      # Upload Linux
+      # ─────────────────────────────────────────
+
+      - name: Upload Linux artifact
         if: matrix.platform == 'ubuntu-22.04'
         uses: actions/upload-artifact@v4
         with:
-          name: Linux-AppImage
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          name: vortex-linux
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
       # ─────────────────────────────────────────
-      # Build Windows / macOS
+      # Upload Windows
       # ─────────────────────────────────────────
 
-      - name: Build Windows / macOS Tauri app
-        if: matrix.platform != 'ubuntu-22.04'
-        uses: tauri-apps/tauri-action@v1
+      - name: Upload Windows artifact
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
         with:
-          tauriScript: npx tauri
-          args: ${{ matrix.args }}
+          name: vortex-windows
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
 
-          uploadWorkflowArtifacts: true
+      # ─────────────────────────────────────────
+      # Upload macOS
+      # ─────────────────────────────────────────
 
-          workflowArtifactNamePattern: "${{ matrix.name }}-[bundle]"
+      - name: Upload macOS artifact
+        if: matrix.platform == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vortex-${{ matrix.name }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
 
   # ─────────────────────────────────────────────
   # GitHub Release
@@ -279,6 +277,8 @@ jobs:
   release:
     name: Create GitHub Release
 
+    if: startsWith(github.ref, 'refs/tags/v')
+
     needs: build
 
     runs-on: ubuntu-24.04
@@ -286,14 +286,44 @@ jobs:
     steps:
 
       # ─────────────────────────────────────────
-      # Download all artifacts
+      # Download Linux
       # ─────────────────────────────────────────
 
-      - name: Download all build artifacts
+      - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          path: release
-          merge-multiple: true
+          name: vortex-linux
+          path: release/linux
+
+      # ─────────────────────────────────────────
+      # Download Windows
+      # ─────────────────────────────────────────
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vortex-windows
+          path: release/windows
+
+      # ─────────────────────────────────────────
+      # Download macOS ARM64
+      # ─────────────────────────────────────────
+
+      - name: Download macOS ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vortex-macOS-ARM64
+          path: release/macos-arm64
+
+      # ─────────────────────────────────────────
+      # Download macOS Intel
+      # ─────────────────────────────────────────
+
+      - name: Download macOS Intel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vortex-macOS-Intel
+          path: release/macos-intel
 
       # ─────────────────────────────────────────
       # Show release files
@@ -301,8 +331,18 @@ jobs:
 
       - name: Show release files
         run: |
-          echo "===== Release files ====="
+          echo "========================================"
+          echo "RELEASE FILES"
+          echo "========================================"
+
           find release -type f -print
+
+          echo ""
+          echo "========================================"
+          echo "FILE COUNT"
+          echo "========================================"
+
+          find release -type f | wc -l
 
       # ─────────────────────────────────────────
       # Create GitHub Release
@@ -316,7 +356,8 @@ jobs:
           generate_release_notes: true
 
           files: |
-            release/**/*.AppImage
-            release/**/*.msi
-            release/**/*.exe
-            release/**/*.dmg
+            release/linux/*.AppImage
+            release/windows/*.msi
+            release/windows/*.exe
+            release/macos-arm64/*.dmg
+            release/macos-intel/*.dmg
