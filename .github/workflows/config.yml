@@ -1,4 +1,4 @@
-name: Build and Release Tauri App
+name: Build Tauri App
 
 on:
   push:
@@ -11,16 +11,18 @@ permissions:
   contents: write
 
 jobs:
-  publish-tauri:
+  build:
     name: Build ${{ matrix.name }}
 
     strategy:
       fail-fast: false
+
       matrix:
         include:
+
           # Linux x64
           - name: Linux
-            platform: ubuntu-24.04
+            platform: ubuntu-22.04
             args: ""
 
           # Windows x64
@@ -41,8 +43,16 @@ jobs:
     runs-on: ${{ matrix.platform }}
 
     steps:
+      # ─────────────────────────────────────────
+      # Checkout
+      # ─────────────────────────────────────────
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ─────────────────────────────────────────
+      # Node
+      # ─────────────────────────────────────────
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -50,13 +60,21 @@ jobs:
           node-version: lts/*
           cache: npm
 
+      # ─────────────────────────────────────────
+      # Rust
+      # ─────────────────────────────────────────
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      # ─────────────────────────────────────────
+      # Linux dependencies
+      # ─────────────────────────────────────────
+
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -66,22 +84,61 @@ jobs:
             patchelf \
             xdg-utils
 
+      # ─────────────────────────────────────────
+      # Frontend dependencies
+      # ─────────────────────────────────────────
+
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release Tauri app
-        uses: tauri-apps/tauri-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: v__VERSION__
-          releaseName: "Vortex JSON Viewer v__VERSION__"
-          releaseBody: |
-            Download Vortex JSON Viewer for your platform below.
+      # ─────────────────────────────────────────
+      # Build Tauri app
+      # ─────────────────────────────────────────
 
-            - Windows: MSI / NSIS
-            - Linux: AppImage
-            - macOS: Intel / Apple Silicon
-          releaseDraft: false
-          prerelease: false
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v1
+        with:
+          tauriScript: npx tauri
           args: ${{ matrix.args }}
+
+          # Upload generated bundles as workflow artifacts.
+          # We intentionally do NOT give tauri-action tagName/releaseName,
+          # so it does not try to create/upload a GitHub Release itself.
+          uploadWorkflowArtifacts: true
+
+          workflowArtifactNamePattern: "${{ matrix.name }}-[bundle]"
+
+  # ─────────────────────────────────────────────
+  # GitHub Release
+  # ─────────────────────────────────────────────
+
+  release:
+    name: Create GitHub Release
+
+    needs: build
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Show release files
+        run: |
+          echo "===== Release files ====="
+          find release -type f -print
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Vortex JSON Viewer ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/**/*.AppImage
+            release/**/*.msi
+            release/**/*.exe
+            release/**/*.dmg

@@ -1,5 +1,9 @@
 {
   "dependencies": {
+    "@tauri-apps/cli": "2.11.4",
     "@tauri-apps/plugin-dialog": "^2.7.2"
+  },
+  "scripts": {
+    "tauri": "tauri"
   }
 }
