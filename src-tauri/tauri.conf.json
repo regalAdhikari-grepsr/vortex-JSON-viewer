@@ -22,6 +22,9 @@
     "targets": [
       "appimage"
     ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "linux": {
       "deb": {
         "depends": []
