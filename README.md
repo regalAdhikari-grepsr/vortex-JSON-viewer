@@ -93,6 +93,23 @@ To create a release build, run the command for your operating system:
 
 For these builds, packages are written under `src-tauri/target/release/bundle/`.
 
+### macOS release signing
+
+The macOS workflow uses ad hoc signing until Apple credentials are configured. Ad hoc signing may still require users to approve the app in Privacy & Security. To have Apple verify the downloaded app without that manual override, sign it with a **Developer ID Application** certificate and notarize it through Apple. This requires an Apple Developer account that supports notarization.
+
+Add these values under the repository's **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_CERTIFICATE` | Base64 encoded `.p12` export of the Developer ID Application certificate, including its private key |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` file |
+| `APPLE_SIGNING_IDENTITY` | Full certificate identity, such as `Developer ID Application: Name (TEAMID)` |
+| `APPLE_ID` | Apple ID email for notarization |
+| `APPLE_PASSWORD` | App-specific password for that Apple ID |
+| `APPLE_TEAM_ID` | Apple Developer Team ID |
+
+Create the base64 certificate value with `openssl base64 -A -in certificate.p12`. Once these secrets are set, rerun the workflow or create a new version tag to build signed and notarized DMGs. The workflow checks for all required secrets and falls back to ad hoc signing when `APPLE_CERTIFICATE` is absent.
+
 ### Project layout
 
 | Path | Purpose |

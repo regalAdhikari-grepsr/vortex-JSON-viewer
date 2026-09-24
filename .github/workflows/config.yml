@@ -210,10 +210,32 @@ jobs:
 
       - name: Build macOS
         if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          npx tauri build \
-            --target ${{ matrix.target }} \
-            --bundles dmg
+          if [ -n "${APPLE_CERTIFICATE:-}" ]; then
+            : "${APPLE_CERTIFICATE_PASSWORD:?Missing APPLE_CERTIFICATE_PASSWORD secret}"
+            : "${APPLE_SIGNING_IDENTITY:?Missing APPLE_SIGNING_IDENTITY secret}"
+            : "${APPLE_ID:?Missing APPLE_ID secret}"
+            : "${APPLE_PASSWORD:?Missing APPLE_PASSWORD secret}"
+            : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID secret}"
+
+            npx tauri build \
+              --target ${{ matrix.target }} \
+              --bundles dmg
+          else
+            echo "APPLE_CERTIFICATE is not configured; building with ad hoc signing."
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            export APPLE_SIGNING_IDENTITY="-"
+            npx tauri build \
+              --target ${{ matrix.target }} \
+              --bundles dmg
+          fi
 
       # ─────────────────────────────────────────
       # Show build files
