@@ -14,6 +14,7 @@ pub fn run() {
             commands::get_row,
             commands::get_row_keys,
             commands::search_rows,
+            commands::advanced_search_rows,
             commands::find_duplicates,
         ])
         .run(tauri::generate_context!())

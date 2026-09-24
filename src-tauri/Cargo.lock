@@ -3508,13 +3508,14 @@ dependencies = [
 
 [[package]]
 name = "tauri-app"
-version = "0.1.0"
+version = "2.0.1"
 dependencies = [
  "fxhash",
  "memchr",
  "memmap2",
  "once_cell",
  "rayon",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

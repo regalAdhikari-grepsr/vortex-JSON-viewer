@@ -96,6 +96,36 @@ pub async fn search_rows(query: String, case_sensitive: bool, app: AppHandle) ->
 }
 
 #[tauri::command]
+pub async fn advanced_search_rows(
+    query: String,
+    keys: Vec<String>,
+    case_sensitive: bool,
+    regex_mode: bool,
+    app: AppHandle,
+) -> Result<SearchResult, String> {
+    let keys = keys.into_iter().map(|key| key.trim().to_string()).filter(|key| !key.is_empty()).collect::<Vec<_>>();
+    if keys.is_empty() {
+        return Err("Select at least one key to search".to_string());
+    }
+
+    let state = app.state::<AppState>();
+    let my_gen = state.op_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let app_for_cancel = app.clone();
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let state = app_for_cancel.state::<AppState>();
+        let guard = state.dataset.lock().unwrap();
+        let ds = guard.as_ref().ok_or_else(|| "No file loaded".to_string())?;
+        let cancelled = || state.op_generation.load(Ordering::SeqCst) != my_gen;
+        ds.search_by_keys(&query, &keys, case_sensitive, regex_mode, 5000, &cancelled)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    result.ok_or_else(|| "SUPERSEDED".to_string())
+}
+
+#[tauri::command]
 pub async fn find_duplicates(keys: Option<Vec<String>>, app: AppHandle) -> Result<Vec<DuplicateGroup>, String> {
     let state = app.state::<AppState>();
     let my_gen = state.op_generation.fetch_add(1, Ordering::SeqCst) + 1;

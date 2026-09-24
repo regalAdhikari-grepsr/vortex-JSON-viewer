@@ -3,6 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <title>JSON Explorer</title>
+  <script>
+    // Set the theme before first paint so the UI never flashes the wrong mode.
+    // Dark is the app's native look; otherwise follow the system preference.
+    const savedTheme = localStorage.getItem("theme");
+    document.documentElement.dataset.theme =
+      savedTheme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    document.documentElement.dataset.accent = localStorage.getItem("accentTheme") || "ocean";
+    document.documentElement.dataset.fontSize = localStorage.getItem("fontSize") || "medium";
+    document.documentElement.dataset.fontFamily = localStorage.getItem("fontFamily") || "modern";
+  </script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,7 +21,9 @@
       <button id="openBtn" class="btn btn-primary">Open File…</button>
 
       <div id="searchWrap">
+        <button id="clearSearch" class="btn btn-ghost clear-search" type="button" title="Clear search" aria-label="Clear search" disabled>×</button>
         <input id="searchInput" type="text" placeholder="Search values… (substring match)" disabled />
+        <span id="advancedSearchIndicator" class="advanced-search-indicator" hidden></span>
         <label class="case-toggle">
           <input id="caseSensitive" type="checkbox" />
           Aa
@@ -21,29 +33,22 @@
         <button id="nextMatch" class="btn btn-ghost" disabled>↓</button>
       </div>
 
-      <div id="dupKeysWrap">
-        <button id="dupKeysBtn" class="btn" disabled>Keys: whole row ▾</button>
-        <div id="dupKeysPanel" class="dup-keys-panel hidden">
-          <div id="dupKeysList" class="dup-keys-list">
-            <div class="hint" style="padding:8px;">Open a file first.</div>
-          </div>
-          <div class="dup-keys-manual">
-            <input id="dupKeysManual" type="text" placeholder="add a key not listed above, e.g. items.0.sku" />
-          </div>
-          <div class="dup-keys-actions">
-            <button id="dupKeysClear" class="btn btn-ghost">Clear</button>
-            <button id="dupKeysDone" class="btn btn-primary">Done</button>
-          </div>
-        </div>
-      </div>
+      <button id="advancedSearchBtn" class="btn btn-ghost advanced-search-trigger" disabled>Advanced Search</button>
       <button id="dupBtn" class="btn" disabled>Find Duplicates</button>
 
       <div id="fileStats"></div>
+
+      <button id="themeToggle" class="btn btn-ghost theme-toggle" title="Open settings" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false">
+        <svg class="settings-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="m19.4 15 .1.1a1.7 1.7 0 0 1-2.4 2.4l-.1-.1a1.7 1.7 0 0 0-2.9 1.2v.2a1.7 1.7 0 0 1-3.4 0v-.2a1.7 1.7 0 0 0-2.9-1.2l-.1.1a1.7 1.7 0 0 1-2.4-2.4l.1-.1a1.7 1.7 0 0 0-1.2-2.9H4a1.7 1.7 0 0 1 0-3.4h.2a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a1.7 1.7 0 0 1 2.4-2.4l.1.1a1.7 1.7 0 0 0 2.9-1.2V2a1.7 1.7 0 0 1 3.4 0v.2a1.7 1.7 0 0 0 2.9 1.2l.1-.1a1.7 1.7 0 0 1 2.4 2.4l-.1.1a1.7 1.7 0 0 0 1.2 2.9h.2a1.7 1.7 0 0 1 0 3.4h-.2a1.7 1.7 0 0 0-1.2 2.9Z"/>
+        </svg>
+      </button>
     </header>
 
     <main id="content">
       <section id="listPane">
-        <div id="listViewport">
+        <div id="listViewport" tabindex="0" aria-label="JSON rows" aria-keyshortcuts="ArrowUp ArrowDown">
           <div id="listSizer"></div>
         </div>
         <div id="emptyState">
@@ -68,6 +73,115 @@
       </div>
       <div id="dupList" class="modal-body"></div>
     </div>
+  </div>
+
+  <div id="dupKeysModal" class="modal dup-picker-modal hidden" role="dialog" aria-modal="true" aria-labelledby="dupPickerTitle">
+    <section class="dup-picker-card">
+      <header class="modal-header">
+        <div>
+          <span class="settings-eyebrow">COMPARE ROWS</span>
+          <h2 id="dupPickerTitle">Find duplicates</h2>
+        </div>
+        <button id="dupKeysCancel" class="btn btn-ghost" aria-label="Close duplicate options">✕</button>
+      </header>
+      <div class="dup-picker-content">
+        <p class="dup-picker-hint">Choose how rows should be compared.</p>
+        <label class="dup-mode-option"><input id="dupWholeRow" type="radio" name="duplicateMode" value="whole" checked /><span><strong>Entire row</strong><small>Compare every value in each row.</small></span></label>
+        <label class="dup-mode-option"><input id="dupByKeys" type="radio" name="duplicateMode" value="keys" /><span><strong>Selected keys</strong><small>Compare rows using only the keys you choose.</small></span></label>
+        <div id="dupKeysList" class="dup-keys-list"><div class="hint" style="padding:8px;">Open a file first.</div></div>
+        <div class="dup-keys-manual">
+          <input id="dupKeysManual" type="text" placeholder="Add a key path, e.g. items.0.sku" />
+          <button id="dupKeyAdd" class="btn">Add key</button>
+        </div>
+      </div>
+      <footer class="dup-picker-footer">
+        <button id="dupKeysClear" class="btn btn-ghost">Clear keys</button>
+        <div><button id="dupKeysCancelBottom" class="btn btn-ghost">Cancel</button><button id="dupKeysRun" class="btn btn-primary">Find Duplicates</button></div>
+      </footer>
+    </section>
+  </div>
+
+  <div id="advancedSearchModal" class="modal advanced-search-modal hidden" role="dialog" aria-modal="true" aria-labelledby="advancedSearchTitle">
+    <section class="advanced-search-card">
+      <header class="modal-header">
+        <div>
+          <span class="settings-eyebrow">FILTER ROWS</span>
+          <h2 id="advancedSearchTitle">Advanced search</h2>
+        </div>
+        <button id="advancedSearchClose" class="btn btn-ghost" aria-label="Close advanced search">✕</button>
+      </header>
+      <div class="advanced-search-content">
+        <label class="advanced-query-label" for="advancedSearchQuery">Value to find</label>
+        <input id="advancedSearchQuery" class="advanced-search-input" type="text" placeholder="Enter a value or regex pattern" />
+        <div class="advanced-search-toggles">
+          <label><input id="advancedSearchCaseSensitive" type="checkbox" /> Case sensitive</label>
+          <label><input id="advancedSearchRegex" type="checkbox" /> Regular expression</label>
+        </div>
+        <div class="advanced-keys-heading">
+          <div><strong>Search within keys</strong><span>Select one or more keys, or add a dot path.</span></div>
+          <button id="advancedSearchSelectAll" class="btn btn-ghost">Select all</button>
+        </div>
+        <div id="advancedSearchKeys" class="advanced-search-keys">
+          <div class="hint">Open a file to see its keys.</div>
+        </div>
+        <div class="advanced-key-entry">
+          <input id="advancedSearchKeyInput" type="text" placeholder="Add a key path, e.g. user.email" />
+          <button id="advancedSearchAddKey" class="btn">Add key</button>
+        </div>
+      </div>
+      <footer class="advanced-search-footer">
+        <span>Matching rows can be browsed with ↑ and ↓.</span>
+        <div><button id="advancedSearchCancel" class="btn btn-ghost">Cancel</button><button id="advancedSearchRun" class="btn btn-primary">Search</button></div>
+      </footer>
+    </section>
+  </div>
+
+  <div id="settingsModal" class="modal settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <section class="settings-card">
+      <header class="settings-header">
+        <div>
+          <span class="settings-eyebrow">PERSONALIZE</span>
+          <h2 id="settingsTitle">Appearance</h2>
+        </div>
+        <button id="settingsClose" class="btn btn-ghost settings-close" aria-label="Close settings">✕</button>
+      </header>
+      <div class="settings-content">
+        <fieldset class="settings-section">
+          <legend>Color mode</legend>
+          <div class="mode-options">
+            <button class="mode-option" data-mode="dark" aria-pressed="false"><span class="mode-preview mode-preview-dark"></span><span>Dark</span></button>
+            <button class="mode-option" data-mode="light" aria-pressed="false"><span class="mode-preview mode-preview-light"></span><span>Light</span></button>
+          </div>
+        </fieldset>
+        <fieldset class="settings-section">
+          <legend>Color theme</legend>
+          <div class="accent-options" role="group" aria-label="Accent color">
+            <button class="accent-option" data-accent="ocean" aria-label="Ocean blue" aria-pressed="false" title="Ocean"><span></span><small>Ocean</small></button>
+            <button class="accent-option" data-accent="amethyst" aria-label="Amethyst violet" aria-pressed="false" title="Amethyst"><span></span><small>Amethyst</small></button>
+            <button class="accent-option" data-accent="forest" aria-label="Forest green" aria-pressed="false" title="Forest"><span></span><small>Forest</small></button>
+            <button class="accent-option" data-accent="sunset" aria-label="Sunset amber" aria-pressed="false" title="Sunset"><span></span><small>Sunset</small></button>
+            <button class="accent-option" data-accent="rose" aria-label="Rose pink" aria-pressed="false" title="Rose"><span></span><small>Rose</small></button>
+          </div>
+        </fieldset>
+        <fieldset class="settings-section">
+          <legend>Font</legend>
+          <div class="font-options">
+            <button class="font-option" data-font="modern" aria-pressed="false"><span class="font-sample">Aa</span><span>Modern</span></button>
+            <button class="font-option" data-font="classic" aria-pressed="false"><span class="font-sample">Aa</span><span>Classic</span></button>
+            <button class="font-option" data-font="humanist" aria-pressed="false"><span class="font-sample">Aa</span><span>Humanist</span></button>
+          </div>
+        </fieldset>
+        <fieldset class="settings-section">
+          <legend>Text size</legend>
+          <div class="size-options">
+            <button class="size-option" data-size="small" aria-pressed="false"><span class="size-sample size-small">A</span><span>Small</span></button>
+            <button class="size-option" data-size="medium" aria-pressed="false"><span class="size-sample size-medium">A</span><span>Medium</span></button>
+            <button class="size-option" data-size="large" aria-pressed="false"><span class="size-sample size-large">A</span><span>Large</span></button>
+          </div>
+        </fieldset>
+      </div>
+      <footer class="settings-footer"><span>Changes are saved automatically</span></footer>
+    </section>
   </div>
 
   <div id="toast" class="toast hidden"></div>

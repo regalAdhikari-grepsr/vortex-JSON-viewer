@@ -14,6 +14,7 @@ use memchr::memmem;
 use memmap2::Mmap;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
+use regex::{Regex, RegexBuilder};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs::File;
@@ -138,10 +139,6 @@ impl Dataset {
         }
     }
 
-    pub fn row_count(&self) -> usize {
-        self.offsets.len()
-    }
-
     fn row_bytes(&self, index: usize) -> Option<&[u8]> {
         self.offsets
             .get(index)
@@ -255,7 +252,6 @@ impl Dataset {
 
         let mut matched_rows: Vec<usize> = Vec::new();
         let mut seen_rows: std::collections::HashSet<usize> = std::collections::HashSet::new();
-        let mut total = 0usize;
         let mut scanned = 0u32;
 
         for variant in &variants {
@@ -276,7 +272,6 @@ impl Dataset {
                 if scanned % 2048 == 0 && cancelled() {
                     return None;
                 }
-                total += 1;
                 if let Some(row) = self.row_for_offset(pos) {
                     if seen_rows.insert(row) {
                         matched_rows.push(row);
@@ -290,7 +285,8 @@ impl Dataset {
         // restore ascending order for sane "jump to next match" behavior.
         matched_rows.sort_unstable();
 
-        let truncated = matched_rows.len() > limit;
+        let total = matched_rows.len();
+        let truncated = total > limit;
         matched_rows.truncate(limit);
 
         Some(SearchResult {
@@ -298,6 +294,59 @@ impl Dataset {
             total_matches: total,
             truncated,
         })
+    }
+
+    /// Search values at one or more selected dot paths. Rows are parsed one
+    /// at a time, and a row is returned only once even if several selected
+    /// keys or values match.
+    pub fn search_by_keys(
+        &self,
+        query: &str,
+        keys: &[String],
+        case_sensitive: bool,
+        regex_mode: bool,
+        limit: usize,
+        cancelled: &(impl Cancel + ?Sized),
+    ) -> Result<Option<SearchResult>, String> {
+        if query.is_empty() || keys.is_empty() {
+            return Ok(Some(SearchResult { matches: Vec::new(), total_matches: 0, truncated: false }));
+        }
+
+        let regex = if regex_mode {
+            Some(RegexBuilder::new(query)
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map_err(|e| format!("Invalid regular expression: {e}"))?)
+        } else {
+            None
+        };
+        let folded_query = if case_sensitive { String::new() } else { query.to_lowercase() };
+        let mut matches: Vec<usize> = self
+            .offsets
+            .par_iter()
+            .enumerate()
+            .filter_map(|(index, &(start, end))| {
+                if index % 128 == 0 && cancelled() {
+                    return None;
+                }
+                let value = serde_json::from_slice::<serde_json::Value>(&self.mmap[start..end]).ok()?;
+                let matched = keys.iter().any(|key| {
+                    lookup_path(&value, key).is_some_and(|value| {
+                        json_value_matches(value, query, &folded_query, case_sensitive, regex.as_ref())
+                    })
+                });
+                matched.then_some(index)
+            })
+            .collect();
+        if cancelled() {
+            return Ok(None);
+        }
+        matches.sort_unstable();
+
+        let total_matches = matches.len();
+        let truncated = total_matches > limit;
+        matches.truncate(limit);
+        Ok(Some(SearchResult { matches, total_matches, truncated }))
     }
 
     /// Find duplicate rows by comparing only specific keys instead of the
@@ -746,6 +795,42 @@ fn lookup_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde
         };
     }
     Some(cur)
+}
+
+fn json_value_matches(
+    value: &serde_json::Value,
+    query: &str,
+    folded_query: &str,
+    case_sensitive: bool,
+    regex: Option<&Regex>,
+) -> bool {
+    match value {
+        serde_json::Value::String(text) => scalar_matches(text, query, folded_query, case_sensitive, regex),
+        serde_json::Value::Array(values) => values
+            .iter()
+            .any(|value| json_value_matches(value, query, folded_query, case_sensitive, regex)),
+        serde_json::Value::Object(values) => values
+            .values()
+            .any(|value| json_value_matches(value, query, folded_query, case_sensitive, regex)),
+        _ => scalar_matches(&value.to_string(), query, folded_query, case_sensitive, regex),
+    }
+}
+
+fn scalar_matches(
+    value: &str,
+    query: &str,
+    folded_query: &str,
+    case_sensitive: bool,
+    regex: Option<&Regex>,
+) -> bool {
+    if let Some(regex) = regex {
+        return regex.is_match(value);
+    }
+    if case_sensitive {
+        value.contains(query)
+    } else {
+        value.to_lowercase().contains(folded_query)
+    }
 }
 
 fn trim_range(bytes: &[u8], mut start: usize, mut end: usize) -> (usize, usize) {
