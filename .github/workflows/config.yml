@@ -27,7 +27,7 @@ jobs:
           - name: Linux
             platform: ubuntu-22.04
             target: ""
-            bundle: appimage
+            bundle: appimage,deb
 
           # ─────────────────────────────────────
           # Windows x64
@@ -118,7 +118,7 @@ jobs:
       - name: Build Linux AppImage
         if: matrix.platform == 'ubuntu-22.04'
         run: |
-          npx tauri build --bundles appimage
+          npx tauri build --bundles appimage,deb
 
       # ─────────────────────────────────────────
       # Fix Linux AppImage
@@ -195,6 +195,24 @@ jobs:
 
           rm -rf squashfs-root
 
+      - name: Build Arch Linux package
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            archlinux:latest \
+            bash -euc '
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed base-devel nodejs npm rust gtk3 webkit2gtk-4.1
+              mkdir -p /tmp/vortex-build
+              cp /workspace/PKGBUILD /tmp/vortex-build/PKGBUILD
+              useradd --create-home builder
+              chown -R builder:builder /tmp/vortex-build
+              su builder -c "cd /tmp/vortex-build && makepkg --noconfirm --cleanbuild"
+              mkdir -p /workspace/src-tauri/target/release/bundle/arch
+              cp /tmp/vortex-build/*.pkg.tar.zst /workspace/src-tauri/target/release/bundle/arch/
+            '
+
       # ─────────────────────────────────────────
       # Build Windows
       # ─────────────────────────────────────────
@@ -247,6 +265,8 @@ jobs:
           echo "===== BUILD OUTPUT ====="
           find src-tauri/target -type f \
             \( -name "*.AppImage" \
+            -o -name "*.deb" \
+            -o -name "*.pkg.tar.zst" \
             -o -name "*.msi" \
             -o -name "*.exe" \
             -o -name "*.dmg" \) \
@@ -263,6 +283,8 @@ jobs:
           name: vortex-linux
           path: |
             src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/arch/*.pkg.tar.zst
           if-no-files-found: error
 
       # ─────────────────────────────────────────
@@ -379,6 +401,8 @@ jobs:
 
           files: |
             release/linux/*.AppImage
+            release/linux/*.deb
+            release/linux/*.pkg.tar.zst
             release/windows/*.msi
             release/windows/*.exe
             release/macos-arm64/*.dmg

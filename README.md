@@ -19,12 +19,12 @@ Visit [GitHub Releases](https://github.com/regalAdhikari-grepsr/vortex-JSON-view
 
 | Platform | Package |
 | --- | --- |
-| Linux x64 | `.AppImage` |
+| Linux x64 | `.deb` (Debian, Ubuntu, and derivatives), `.pkg.tar.zst` (Arch/CachyOS), or `.AppImage` |
 | Windows x64 | `.msi` or `.exe` installer |
 | macOS Apple Silicon | ARM64 `.dmg` |
 | macOS Intel | x64 `.dmg` |
 
-On Linux, make the downloaded AppImage executable before opening it. On Windows, run the installer. On macOS, open the DMG and copy the app to Applications.
+On Debian, Ubuntu, and compatible distributions, install the `.deb` package to add Vortex to your applications menu. On Arch Linux or CachyOS, install the `.pkg.tar.zst` package with `sudo pacman -U ./vortex-json-viewer-*.pkg.tar.zst`. Both installers register Vortex in your applications menu. The AppImage can also be used across Linux distributions; make it executable before opening it.
 
 ## Getting started
 
@@ -87,7 +87,7 @@ To create a release build, run the command for your operating system:
 
 | Platform | Command |
 | --- | --- |
-| Linux | `npm run tauri -- build --bundles appimage` |
+| Linux | `npm run tauri -- build --bundles appimage,deb` (Arch package is built with `makepkg` using `PKGBUILD`) |
 | Windows | `npm run tauri -- build --bundles msi,nsis` |
 | macOS | `npm run tauri -- build --bundles dmg` |
 
