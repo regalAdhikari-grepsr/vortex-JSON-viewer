@@ -1,5 +1,5 @@
 pkgname=vortex-json-viewer
-pkgver=2.0.2
+pkgver=2.0.3
 pkgrel=1
 pkgdesc='Desktop viewer for large JSON datasets'
 arch=('x86_64')

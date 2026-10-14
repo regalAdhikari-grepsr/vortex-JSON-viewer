@@ -400,10 +400,10 @@ jobs:
           generate_release_notes: true
 
           files: |
-            release/linux/*.AppImage
-            release/linux/*.deb
-            release/linux/*.pkg.tar.zst
-            release/windows/*.msi
-            release/windows/*.exe
-            release/macos-arm64/*.dmg
-            release/macos-intel/*.dmg
+            release/linux/**/*.AppImage
+            release/linux/**/*.deb
+            release/linux/**/*.pkg.tar.zst
+            release/windows/**/*.msi
+            release/windows/**/*.exe
+            release/macos-arm64/**/*.dmg
+            release/macos-intel/**/*.dmg
