@@ -386,7 +386,12 @@ html, body {
   font-size: calc(12px * var(--font-scale, 1));
   color: var(--text-muted);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+#copyRowBtn { font-family: var(--sans); }
 
 #detailBody {
   flex: 1;

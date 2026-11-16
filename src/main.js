@@ -132,12 +132,24 @@ const el = {
   listSizer: document.getElementById("listSizer"),
   emptyState: document.getElementById("emptyState"),
   detailIndex: document.getElementById("detailIndex"),
+  copyRowBtn: document.getElementById("copyRowBtn"),
   detailBody: document.getElementById("detailBody"),
   dupModal: document.getElementById("dupModal"),
   dupList: document.getElementById("dupList"),
   dupClose: document.getElementById("dupClose"),
   toast: document.getElementById("toast"),
 };
+
+let selectedRowText = null;
+el.copyRowBtn.addEventListener("click", async () => {
+  if (selectedRowText === null) return;
+  try {
+    await navigator.clipboard.writeText(selectedRowText);
+    showToast("Row copied to clipboard");
+  } catch (e) {
+    showToast(`Could not copy row: ${e}`, true);
+  }
+});
 
 el.advancedSearchBtn.addEventListener("click", () => {
   el.advancedSearchModal.classList.remove("hidden");
@@ -361,11 +373,15 @@ async function selectRow(index) {
   );
 
   el.detailIndex.textContent = `Row ${index}`;
+  selectedRowText = null;
+  el.copyRowBtn.disabled = true;
   el.detailBody.innerHTML = '<div class="hint">Loading…</div>';
   try {
     const pretty = await invoke("get_row", { index });
     if (state.selectedIndex !== index) return;
     const parsed = JSON.parse(pretty);
+    selectedRowText = pretty;
+    el.copyRowBtn.disabled = false;
     el.detailBody.innerHTML = "";
     el.detailBody.appendChild(renderJsonTree(parsed, true));
   } catch (e) {
